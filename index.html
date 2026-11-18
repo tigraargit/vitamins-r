@@ -17,6 +17,7 @@ a{color:inherit}
 
 /* grain + vignette (tunnel vision grows with time) */
 .grain{position:fixed;inset:-50%;pointer-events:none;z-index:30;opacity:.09;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");animation:grain .5s steps(4) infinite}
+@media (max-width:699px){.grain{animation:none}}
 @keyframes grain{0%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-1%)}}
 .vignette{position:fixed;inset:0;pointer-events:none;z-index:29;background:radial-gradient(ellipse at center,transparent calc(62% - var(--v,0)*40%),rgba(0,0,0,calc(.35 + var(--v,0)*.6)) 100%)}
 
@@ -67,7 +68,9 @@ body.focus .thought{opacity:0!important}
 
 /* stop (focus) */
 body.focus .feed{filter:grayscale(1) brightness(.12) blur(3px);transition:filter .9s ease}
-.feed{filter:blur(calc(var(--sp,0)*6px)) brightness(calc(1 - var(--sp,0)*.6)) saturate(calc(1 - var(--sp,0)*.7));transition:filter .4s linear}
+.feed{transition:filter .5s ease}
+.dim{position:fixed;inset:0;z-index:28;pointer-events:none;background:#050505;opacity:calc(var(--sp,0)*.72);transition:opacity .4s linear}
+body.focus .dim{opacity:0}
 body.focus .hud,body.focus .ctl{opacity:0;transition:opacity .4s}
 .fview{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px 18px;overflow:auto}
 body.focus .fview{display:flex;animation:fi 1s ease}
@@ -98,6 +101,7 @@ textarea.f{resize:none;min-height:54px;line-height:1.5}
 <main class="feed" id="feed"></main>
 <div id="sentinel"></div>
 
+<div class="dim"></div>
 <div class="vignette" id="vig"></div>
 <div class="grain"></div>
 <div class="shade t"></div><div class="shade b"></div>
@@ -132,7 +136,7 @@ $('total').textContent=CLIPS.length;
 const narrow=()=>innerWidth<700;
 
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function cols(){const base=narrow()?3:innerWidth<1100?5:6, max=narrow()?5:innerWidth<1100?7:9;return Math.min(max,base+Math.floor(sections/3))}
+function cols(){const base=narrow()?3:innerWidth<1100?5:6, max=narrow()?4:innerWidth<1100?6:8;return Math.min(max,base+Math.floor(sections/3))}
 function play(v){const p=v.play();if(p&&p.catch)p.catch(()=>{})}
 function section(){
   const c=cols();const s=document.createElement('section');s.className='sect';s.style.setProperty('--c',c);
@@ -141,20 +145,28 @@ function section(){
     t.innerHTML=`<video muted loop playsinline preload="none" poster="clips/${k.f}.jpg"></video><span class="saved">saved</span><span class="cap">${k.a?'@'+k.a:''}</span>`;
     s.appendChild(t);io.observe(t)});
   feed.appendChild(s);sections++;
+  while(feed.children.length>36){const f=feed.firstElementChild,r=f.getBoundingClientRect();if(r.bottom>-200)break;
+    f.querySelectorAll('.tile').forEach(t=>{io.unobserve(t);const v=t.firstElementChild;vis.delete(v);clearTimeout(v._t);v.removeAttribute('src')});
+    if(f.classList.contains('line'))lio.unobserve(f);const h=r.height;f.remove();window.scrollBy(0,-h)}
   if(sections%3===0){const l=document.createElement('div');l.className='line';l.dataset.text=LINES[lineI++%LINES.length];feed.appendChild(l);lio.observe(l)}
 }
-const io=new IntersectionObserver(es=>es.forEach(e=>{
+const io=new IntersectionObserver(es=>{es.forEach(e=>{
   const t=e.target,v=t.firstElementChild,k=CLIPS[t.dataset.i];
-  if(e.isIntersecting){
-    vis.add(v);clearTimeout(v._t);
-    if(!v.getAttribute('src')&&speed<16){v.src='clips/'+k.f+'.mp4';v.addEventListener('loadedmetadata',()=>{try{v.currentTime=Math.random()*Math.max(0,v.duration-.8)}catch(_){}} ,{once:true})}
-    v.muted=!SOUND;if(STARTED&&!FOCUS)play(v);
-    if(!t.dataset.seen&&STARTED){t.dataset.seen=1;seen++;secs+=k.d}
-  }else{
-    vis.delete(v);v.pause();
-    v._t=setTimeout(()=>{if(!vis.has(v)&&v.getAttribute('src')){v.removeAttribute('src');v.load()}},5000);
-  }
-}),{rootMargin:'100px 0px'});
+  if(e.isIntersecting){vis.add(v);clearTimeout(v._t);if(!t.dataset.seen&&STARTED){t.dataset.seen=1;seen++;secs+=k.d}}
+  else{vis.delete(v);v.pause();v._t=setTimeout(()=>{if(!vis.has(v)&&v.getAttribute('src')){v.removeAttribute('src');v.load()}},4000)}
+});sched()},{rootMargin:'60px 0px'});
+/* only the videos closest to the middle of the screen play; when it's too fast to see, they freeze */
+let schedQ=false;
+function sched(){if(schedQ)return;schedQ=true;requestAnimationFrame(()=>{schedQ=false;
+  const cap=(!STARTED||FOCUS||speed>11)?0:(narrow()?12:20),mid=innerHeight/2;
+  const arr=[...vis].map(v=>{const r=v.parentNode.getBoundingClientRect();return[Math.abs(r.top+r.height/2-mid),v]}).sort((a,b)=>a[0]-b[0]);
+  arr.forEach(([,v],i)=>{
+    if(i<cap){if(!v.getAttribute('src')){const k=CLIPS[v.parentNode.dataset.i];v.src='clips/'+k.f+'.mp4';v.addEventListener('loadedmetadata',()=>{try{v.currentTime=Math.random()*Math.max(0,v.duration-.8)}catch(_){}} ,{once:true})}
+      v.muted=!SOUND;if(v.paused)play(v)}
+    else if(!v.paused)v.pause();
+  });
+})}
+setInterval(sched,400);
 /* typewriter lines */
 const lio=new IntersectionObserver(es=>es.forEach(e=>{
   if(!e.isIntersecting||e.target.dataset.done)return;const el=e.target;el.dataset.done=1;const txt=el.dataset.text;let i=0;
@@ -211,11 +223,11 @@ let lastT=0;function step(now){const dt=lastT?Math.min(.05,(now-lastT)/1000):0;l
 
 $('go').onclick=()=>{
   STARTED=true;t0=Date.now();document.body.classList.remove('locked');$('intro').classList.add('out');
-  vis.forEach(v=>{v.muted=!SOUND;play(v)});  // everything starts at the same moment
+  sched();  // everything starts at the same moment
   vis.forEach(v=>{const t=v.parentNode;if(!t.dataset.seen){t.dataset.seen=1;seen++;secs+=CLIPS[t.dataset.i].d}});
   requestAnimationFrame(step);setTimeout(popThought,1200);
 };
-$('sound').onclick=()=>{SOUND=!SOUND;$('sound').classList.toggle('on',SOUND);if(!FOCUS)vis.forEach(v=>{v.muted=!SOUND;play(v)})};
+$('sound').onclick=()=>{SOUND=!SOUND;$('sound').classList.toggle('on',SOUND);vis.forEach(v=>{v.muted=!SOUND});sched()};
 $('auto').onclick=()=>{AUTO=!AUTO;$('auto').classList.toggle('on',AUTO);if(AUTO)t0=Date.now()-20000};
 
 /* stop: everything freezes, one thing gets your attention */
@@ -230,7 +242,7 @@ function openFocus(i){
   $('fnote').value=n.note||'';$('flink').value=n.link||'';renderOpen();
 }
 function renderOpen(){const l=(NOTES[FOCUS.f]||{}).link;$('fopen').innerHTML=l?`<a class="b" href="${l.replace(/"/g,'&quot;')}" target="_blank" rel="noopener">open post</a>`:''}
-function closeFocus(){speed=0;document.documentElement.style.setProperty('--sp',0);lastSp=0;FOCUS=null;fv.pause();fv.removeAttribute('src');fv.load();document.body.classList.remove('focus');t0=Date.now()-12000;vis.forEach(v=>{v.muted=!SOUND;play(v)})}
+function closeFocus(){speed=0;document.documentElement.style.setProperty('--sp',0);lastSp=0;FOCUS=null;fv.pause();fv.removeAttribute('src');fv.load();document.body.classList.remove('focus');t0=Date.now()-12000;sched()}
 $('fclose').onclick=closeFocus;
 fv.onclick=()=>fv.paused?play(fv):fv.pause();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&FOCUS)closeFocus();if(e.key===' '&&!STARTED){e.preventDefault();$('go').click()}});
