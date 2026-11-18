@@ -48,6 +48,14 @@ body.focus .shade{opacity:0}
 .ctl button{font-size:12px;padding:5px 8px;color:#fff;letter-spacing:.06em;text-shadow:0 1px 8px rgba(0,0,0,.8)}
 .ctl button.on{text-decoration:underline;text-underline-offset:4px}
 
+
+/* thoughts that pop up while scrolling */
+.thought{position:fixed;z-index:33;pointer-events:none;max-width:min(84vw,calc(360px + var(--sp,0)*340px));padding:7px 11px;background:rgba(5,5,5,calc(.78 - var(--sp,0)*.5));color:#fff;font-size:calc(clamp(14px,3.7vw,17px) + var(--sp,0)*clamp(10px,4vw,26px));font-weight:calc(400 + var(--sp,0)*300);line-height:1.35;letter-spacing:.01em;box-shadow:0 8px 30px rgba(0,0,0,.5);transition:opacity .8s ease,transform .8s ease;opacity:1}
+.thought.out{opacity:0;transform:translateY(-8px)}
+.thought .cur{display:inline-block;width:.5em;height:.95em;background:var(--red);vertical-align:-.1em;margin-left:2px;animation:blink 1s steps(1) infinite}
+body.focus .thought{opacity:0!important}
+.thought em{font-style:normal;color:var(--red);font-weight:700}
+
 /* intro */
 .intro{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;justify-content:center;padding:0 9vw;transition:opacity 1.2s ease}
 .intro.out{opacity:0;pointer-events:none}
@@ -59,7 +67,7 @@ body.focus .shade{opacity:0}
 
 /* stop (focus) */
 body.focus .feed{filter:grayscale(1) brightness(.12) blur(3px);transition:filter .9s ease}
-.feed{transition:filter .5s ease}
+.feed{filter:blur(calc(var(--sp,0)*6px)) brightness(calc(1 - var(--sp,0)*.6)) saturate(calc(1 - var(--sp,0)*.7));transition:filter .4s linear}
 body.focus .hud,body.focus .ctl{opacity:0;transition:opacity .4s}
 .fview{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px 18px;overflow:auto}
 body.focus .fview{display:flex;animation:fi 1s ease}
@@ -139,7 +147,7 @@ const io=new IntersectionObserver(es=>es.forEach(e=>{
   const t=e.target,v=t.firstElementChild,k=CLIPS[t.dataset.i];
   if(e.isIntersecting){
     vis.add(v);clearTimeout(v._t);
-    if(!v.getAttribute('src')){v.src='clips/'+k.f+'.mp4';v.addEventListener('loadedmetadata',()=>{try{v.currentTime=Math.random()*Math.max(0,v.duration-.8)}catch(_){}} ,{once:true})}
+    if(!v.getAttribute('src')&&speed<16){v.src='clips/'+k.f+'.mp4';v.addEventListener('loadedmetadata',()=>{try{v.currentTime=Math.random()*Math.max(0,v.duration-.8)}catch(_){}} ,{once:true})}
     v.muted=!SOUND;if(STARTED&&!FOCUS)play(v);
     if(!t.dataset.seen&&STARTED){t.dataset.seen=1;seen++;secs+=k.d}
   }else{
@@ -162,6 +170,31 @@ setInterval(()=>{if(!STARTED||FOCUS)return;const arr=[...vis];if(!arr.length)ret
   for(let j=0;j<n;j++){const v=arr[Math.floor(Math.random()*arr.length)];const s=v.parentNode.querySelector('.saved');s.classList.remove('on');void s.offsetWidth;s.classList.add('on')}
 },1300);
 
+
+/* thoughts: your inner voice while scrolling — change these to your own words */
+const THOUGHTS=["maybe *one day* i will do this.","i wish i was this *talented*.","what *stops* me from creating more?","i should *try* this.","how do they have the *time*?","i could *never* make this.","save. i'll come *back* to it.","wait, i've *seen* this before.","this is *exactly* what i wanted to make.","why am i *still* scrolling?","*tomorrow*. i'll start tomorrow.","one more, *then* i'll draw.","*everyone* is making something.","where do i even *begin*?","i *forgot* what i was looking for.","is this *inspiration* or just distraction?","i need to *buy* this pen.","when did i last *make* something?"];
+const esc=t=>t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function parts(t){const out=[];t.split('*').forEach((seg,k)=>{for(const ch of seg)out.push([ch,k%2===1])});return out}
+function htmlOf(ps,n){let h='',red=false;for(let i=0;i<n;i++){const[ch,r]=ps[i];if(r!==red){h+=r?'<em>':'</em>';red=r}h+=esc(ch)}if(red)h+='</em>';return h}
+let tq=shuffle(THOUGHTS.map((_,i)=>i)),thoughtsOn=[];
+function nextThought(){if(!tq.length)tq=shuffle(THOUGHTS.map((_,i)=>i));return THOUGHTS[tq.pop()]}
+function popThought(){
+  if(!STARTED||FOCUS)return;
+  const el=(Date.now()-t0)/1000,maxOn=Math.min(6,1+Math.floor(el/22));
+  if(thoughtsOn.length>=maxOn)return;
+  const d=document.createElement('div');d.className='thought';d.innerHTML='<span></span><i class="cur"></i>';document.body.appendChild(d);
+  const txt=nextThought(),ps=parts(txt);d.firstChild.innerHTML=htmlOf(ps,ps.length);
+  const w=d.offsetWidth,h=d.offsetHeight;d.firstChild.textContent='';
+  let x,y,ok=false;
+  for(let k=0;k<12&&!ok;k++){x=12+Math.random()*Math.max(1,innerWidth-w-24);y=70+Math.random()*Math.max(1,innerHeight-h-200);
+    ok=thoughtsOn.every(o=>x+w<o.x||x>o.x+o.w||y+h<o.y-10||y>o.y+o.h+10)}
+  d.style.left=x+'px';d.style.top=y+'px';const rec={x,y,w,h,d};thoughtsOn.push(rec);
+  let i=0;const sp=d.firstChild;
+  const tick=()=>{sp.innerHTML=htmlOf(ps,++i);if(i<ps.length)setTimeout(tick,34+Math.random()*50);else setTimeout(()=>{d.classList.add('out');setTimeout(()=>{d.remove();thoughtsOn=thoughtsOn.filter(o=>o!==rec)},800)},1700+ps.length*28)};
+  setTimeout(tick,200);
+}
+(function loop(){popThought();const el=STARTED?(Date.now()-t0)/1000:0;setTimeout(loop,Math.max(550,2600-el*18)+Math.random()*700)})();
+
 /* counters + growing tunnel vision */
 const fmt=n=>n.toLocaleString('en');
 setInterval(()=>{if(!STARTED)return;const el=(Date.now()-t0)/1000;
@@ -171,14 +204,16 @@ setInterval(()=>{if(!STARTED)return;const el=(Date.now()-t0)/1000;
   $('vig').style.setProperty('--v',Math.min(1,el/180).toFixed(3));
 },400);
 
+/* blur + dim the feed as speed grows: the images disappear, the thoughts stay */
+let lastSp=-1;setInterval(()=>{const sp=Math.max(0,Math.min(1,(speed-5)/28));if(Math.abs(sp-lastSp)>.03){document.documentElement.style.setProperty('--sp',sp.toFixed(2));lastSp=sp}},200);
 /* auto scroll that keeps accelerating */
-function step(){if(STARTED&&AUTO&&!FOCUS){const el=(Date.now()-t0)/1000;speed=Math.min(narrow()?7:9,.6+el*el/2600);window.scrollBy(0,speed)}requestAnimationFrame(step)}
+let lastT=0;function step(now){const dt=lastT?Math.min(.05,(now-lastT)/1000):0;lastT=now;if(STARTED&&AUTO&&!FOCUS){const el=(Date.now()-t0)/1000;speed=Math.min(narrow()?38:48,.8+el*el/320);window.scrollBy(0,speed*dt*60)}requestAnimationFrame(step)}
 
 $('go').onclick=()=>{
   STARTED=true;t0=Date.now();document.body.classList.remove('locked');$('intro').classList.add('out');
   vis.forEach(v=>{v.muted=!SOUND;play(v)});  // everything starts at the same moment
   vis.forEach(v=>{const t=v.parentNode;if(!t.dataset.seen){t.dataset.seen=1;seen++;secs+=CLIPS[t.dataset.i].d}});
-  requestAnimationFrame(step);
+  requestAnimationFrame(step);setTimeout(popThought,1200);
 };
 $('sound').onclick=()=>{SOUND=!SOUND;$('sound').classList.toggle('on',SOUND);if(!FOCUS)vis.forEach(v=>{v.muted=!SOUND;play(v)})};
 $('auto').onclick=()=>{AUTO=!AUTO;$('auto').classList.toggle('on',AUTO);if(AUTO)t0=Date.now()-20000};
@@ -195,7 +230,7 @@ function openFocus(i){
   $('fnote').value=n.note||'';$('flink').value=n.link||'';renderOpen();
 }
 function renderOpen(){const l=(NOTES[FOCUS.f]||{}).link;$('fopen').innerHTML=l?`<a class="b" href="${l.replace(/"/g,'&quot;')}" target="_blank" rel="noopener">open post</a>`:''}
-function closeFocus(){FOCUS=null;fv.pause();fv.removeAttribute('src');fv.load();document.body.classList.remove('focus');t0=Date.now()-15000;vis.forEach(v=>{v.muted=!SOUND;play(v)})}
+function closeFocus(){speed=0;document.documentElement.style.setProperty('--sp',0);lastSp=0;FOCUS=null;fv.pause();fv.removeAttribute('src');fv.load();document.body.classList.remove('focus');t0=Date.now()-12000;vis.forEach(v=>{v.muted=!SOUND;play(v)})}
 $('fclose').onclick=closeFocus;
 fv.onclick=()=>fv.paused?play(fv):fv.pause();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&FOCUS)closeFocus();if(e.key===' '&&!STARTED){e.preventDefault();$('go').click()}});
